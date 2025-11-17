@@ -1,16 +1,53 @@
-# This is a sample Python script.
+import os
+from dotenv import load_dotenv
+load_dotenv()  # this reads .env in the current working directory
 
-# Press ⌃R to execute it or replace it with your code.
-# Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
+from flask import Flask, request, jsonify, render_template
 
+app = Flask(__name__)
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press ⌘F8 to toggle the breakpoint.
+@app.get("/")
+def index():
+    return render_template("index.html")
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
+@app.post("/chat")
+def chat():
+    data = request.get_json(silent=True) or {}
+    text = (data.get("message") or "").strip()
+    if not text:
+        return jsonify({"error": "Empty message"}), 400
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    api_key = os.environ.get("OPENAI_API_KEY")  # ✅ correct env var
+    if not api_key:
+        return jsonify({
+            "reply": "⚠️ Server missing OPENAI_API_KEY. Set it in cPanel → Setup Python App → Environment Variables."
+        })
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are concise."},
+                {"role": "user",   "content": text},
+            ],
+            temperature=0.7,
+        )
+        return jsonify({"reply": resp.choices[0].message.content})
+    except Exception:
+        return jsonify({"error": "Upstream call failed. Check server logs."}), 500
+
+@app.get("/envcheck")
+def envcheck():
+    val = os.environ.get("OPENAI_API_KEY")
+    return {
+        "has_key": bool(val),
+        "len": (len(val) if val else 0),
+        "model": os.environ.get("OPENAI_MODEL")
+    }
